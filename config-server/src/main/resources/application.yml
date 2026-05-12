@@ -1,0 +1,18 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  cloud:
+    config:
+      server:
+        git:
+          uri: file:///tmp/not-configured-yet # Will be overridden via environment variables
+          search-paths: '*'
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
