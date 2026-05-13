@@ -6,8 +6,8 @@ RUN mvn clean package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-# Install git because config server running in file mode needs git CLI to perform checkouts
-RUN apk add --no-cache git
+# Install git and curl for config checkout and healthchecks
+RUN apk add --no-cache git curl
 COPY --from=builder /app/target/*.jar app.jar
 EXPOSE 8888
 ENTRYPOINT ["java", "-jar", "app.jar"]
