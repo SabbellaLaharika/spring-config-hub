@@ -1,0 +1,22 @@
+# Maven build outputs
+**/target/
+target/
+
+# Eclipse IDE files
+.settings/
+.project
+.classpath
+.factorypath
+
+# IntelliJ IDEA files
+.idea/
+*.iml
+*.iws
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
