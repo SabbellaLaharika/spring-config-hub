@@ -1,0 +1,5 @@
+inventory:
+  maxStock: 10000
+  replenishThreshold: 100
+server:
+  port: 8082
