@@ -9,5 +9,7 @@ WORKDIR /app
 # Install git and curl for config checkout and healthchecks
 RUN apk add --no-cache git curl
 COPY --from=builder /app/target/*.jar app.jar
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
 EXPOSE 8888
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["./entrypoint.sh"]

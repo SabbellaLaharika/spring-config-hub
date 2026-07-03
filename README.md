@@ -2,45 +2,80 @@
 
 This repository implements a robust, centralized, Git-backed configuration system for microservices using Spring Cloud Config and Spring Boot. It features an externalized environment-aware config repository, dynamic run-time configuration refreshing, and automated Docker multi-stage orchestration with healthy dependency checking.
 
-## System Architecture Overview
+---
 
-The architecture consists of:
-1. **Config Repository (`config-repo/`)**: A local Git repository storing YAML configurations (`inventory-service-dev.yml`, `inventory-service-prod.yml`) for different environments.
-2. **Config Server (`config-server/`)**: A dedicated Spring Boot microservice built with `spring-cloud-config-server`. It exposes configuration properties from the Git repository via standard HTTP APIs.
-3. **Inventory Service (`inventory-service/`)**: A client microservice running Spring Boot. On startup, it resolves the config server's location via its bootstrap context, downloads target configurations, maps them using `@ConfigurationProperties`, and features hot-swappable `@RefreshScope` beans.
-4. **Docker Orchestration**: Config Server and Inventory Service have multi-stage `Dockerfile` declarations and are linked in a `docker-compose.yml` setup configured with dependent healthchecks.
+## Core Architectural Concepts
+
+### Decentralized vs. Centralized Configuration
+
+In a decentralized or traditional configuration pattern, each microservice carries its own environment configurations (like database credentials, feature flags, or service limits) inside its local application package (e.g., `application.properties` or `application.yml`).
+
+This traditional approach has critical flaws in distributed production environments:
+1. **Redundant Configurations**: The same setting (like database URLs or email server configurations) is duplicated across multiple services, leading to inconsistencies.
+2. **Configuration Drift**: Over time, settings on dev, staging, and production environments drift apart, causing bugs that only show up under specific environments.
+3. **No Auditing or History**: Changes are made directly on servers or pushed through code, making it difficult to audit who changed a setting or when it was changed.
+4. **Service Downtime**: Applying any configuration change requires rebuilding, repackaging, and restarting the entire microservice, dropping active traffic.
+
+**Centralized configuration** resolves these issues by moving all configuration files to a centralized provider (Spring Cloud Config Server) backed by a version-controlled repository (Git). Client microservices query this central server at startup to retrieve their environment-specific settings.
 
 ---
 
-## Project Prerequisites
+## System Architecture
 
-- **Docker** and **Docker Compose** installed.
-- Git (optional, for further changes to config-repo manually).
+![System Architecture Overview](images/system_architecture_diagram.png)
+
+The system consists of the following components:
+
+1. **Config Repository (`config-repo/`)**: A local Git repository containing configuration files (`inventory-service-dev.yml`, `inventory-service-prod.yml`) for different environments. This provides version control, rollback capabilities, and commit-based audits.
+2. **Config Server (`config-server/`)**: A Spring Boot microservice built with `spring-cloud-config-server`. It exposes properties from the Git repository via standard HTTP REST APIs.
+3. **Inventory Service (`inventory-service/`)**: A client microservice running Spring Boot. At boot, it resolves the config server's location via its bootstrap context, downloads target configurations, maps them using `@ConfigurationProperties`, and features hot-swappable `@RefreshScope` beans.
+4. **Docker Compose Orchestration**: Links the services together, ensuring that `inventory-service` only starts after the `config-server` passes its Actuator health check.
+
+---
+
+## Detailed Concepts Explained
+
+### 1. Why Git Backing Matters
+Using Git as the config repository backend provides enterprise-grade benefits:
+* **Versioning**: Every configuration change is tracked as a Git commit, showing exactly who modified a setting and why.
+* **Audit Trail**: Provides full transparency on environment changes, reducing security and compliance risks.
+* **Rollbacks**: If a config change breaks production, reverting to the previous working state is as simple as running a `git revert` command.
+
+### 2. How Dynamic Configuration Refresh Works
+The magic of updating configurations without a service restart relies on Spring Boot Actuator and Spring Cloud's `@RefreshScope`:
+
+![Dynamic Config Refresh Flow](images/refresh_flow_diagram.png)
+
+1. The developer updates the configuration file in `config-repo` and commits it.
+2. A `POST` request is sent to the client's `/actuator/refresh` endpoint.
+3. Spring Cloud handles the event by clearing all cached beans annotated with `@RefreshScope`.
+4. It calls the Config Server to fetch the latest properties and inserts them into the Spring `Environment`.
+5. When the client next accesses the bean, Spring instantiates a new instance, binding the new configurations on-the-fly. This happens with **zero downtime**.
+
+### 3. Container Boot Sequence & Resilience
+To prevent microservices from failing to boot due to missing configurations, the `inventory-service` uses Spring's `fail-fast: true` property. If the Config Server is offline, the client will immediately shut down. 
+
+In Docker Compose, we ensure this doesn't cause startup loops by defining a health check on `config-server` (`/actuator/health`) and using the `condition: service_healthy` rule inside `depends_on` on the `inventory-service`. The client waits until the server is fully initialized before booting.
 
 ---
 
 ## Getting Started
 
 ### 1. Set Environment Variables
-You can configure your target environment by creating a `.env` file in the project root based on the provided `.env.example`:
+Configure your target environment by creating a `.env` file in the project root based on the provided `.env.example`:
 
 ```bash
 cp .env.example .env
 ```
 
-The default configuration targets the `dev` profile.
+The default configurations target the `dev` profile.
 
-### 2. Build & Start System
+### 2. Build & Start the System
 Launch the entire suite using a single command:
 
 ```bash
 docker-compose up --build
 ```
-
-This will:
-- Build both microservices using high-performance multi-stage Docker configurations.
-- Wait for the `config-server` to become healthy (via `/actuator/health`).
-- Launch the `inventory-service` once connectivity is verified.
 
 ---
 
@@ -51,7 +86,7 @@ Verify that the Config Server properly loads and translates the Git repository's
 
 **GET** `http://localhost:8888/inventory-service/dev`
 
-**Sample Valid Response snippet**:
+**Sample Response**:
 ```json
 {
   "name": "inventory-service",
@@ -68,9 +103,10 @@ Verify that the Config Server properly loads and translates the Git repository's
   ]
 }
 ```
+* **Explanation**: The response contains the application's configuration metadata. The `propertySources` array lists the active files, and the `source` block lists the exact key-value pairs parsed from `inventory-service-dev.yml` to be served to the client.
 
 ### 2. Client Config - Read Ingested Properties
-Query the running microservice's state to ensure it mapped the dynamic values correctly:
+Query the running client microservice to ensure it mapped the configuration values:
 
 **GET** `http://localhost:8081/api/inventory/config`
 
@@ -82,9 +118,10 @@ Query the running microservice's state to ensure it mapped the dynamic values co
   "replenishThreshold": 10
 }
 ```
+* **Explanation**: This is the mapped output of the `@ConfigurationProperties` bean, verifying that `inventory-service` correctly ingested properties from the Config Server and bound them to Java fields.
 
-### 3. Health Check Endpoint
-Validate connection persistence with the configuration provider:
+### 3. Custom Health Indicator Check
+Validate connection status with the configuration provider:
 
 **GET** `http://localhost:8081/api/inventory/health`
 
@@ -95,30 +132,4 @@ Validate connection persistence with the configuration provider:
     "configServer": "connected"
 }
 ```
-
----
-
-## Demonstrating Dynamic Configuration Updates (Zero-Downtime)
-
-To verify dynamic refresh functionality without restarting the `inventory-service` container, follow these steps:
-
-1. Verify current initial stock limit is `100` by visiting `http://localhost:8081/api/inventory/config`.
-2. Modify the underlying Git file `config-repo/inventory-service-dev.yml` on the host machine. Change `maxStock` to `250`:
-   ```yaml
-   inventory:
-     maxStock: 250
-     replenishThreshold: 10
-   server:
-     port: 8081
-   ```
-3. Commit the new file update into the local Git repository:
-   ```bash
-   cd config-repo
-   git add .
-   git commit -m "Testing config refresh payload"
-   cd ..
-   ```
-4. Trigger a configuration reload by sending a POST request to the Inventory Service's Actuator endpoint:
-   - **POST** `http://localhost:8081/actuator/refresh`
-   - (Expected Status Code: 200 OK, body details array like `["inventory.maxStock"]`)
-5. Verify the updated config is immediate: Visit `http://localhost:8081/api/inventory/config` and confirm `"maxStock": 250` is active.
+* **Explanation**: This calls a custom `HealthIndicator` bean (`ConfigServerHealthIndicator`). If the application has loaded configurations (verified by searching for the `inventory.maxStock` property in the Spring environment), it returns an `UP` status. This integrates with `/actuator/health` to report consolidated microservice health.

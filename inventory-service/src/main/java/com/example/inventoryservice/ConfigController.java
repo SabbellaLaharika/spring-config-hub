@@ -31,13 +31,15 @@ public class ConfigController {
         return response;
     }
 
+    @Autowired
+    private ConfigServerHealthIndicator configServerHealthIndicator;
+
     @GetMapping("/health")
     public ResponseEntity<Map<String, String>> getHealth() {
+        org.springframework.boot.actuate.health.Health health = configServerHealthIndicator.health();
         Map<String, String> response = new LinkedHashMap<>();
-        response.put("status", "UP");
-        // Simulate confirmation logic: If we can read activeProfile from context, we likely were connected at startup.
-        // In a more complete scenario, one could try to contact the server or inspect Environment property sources.
-        response.put("configServer", "connected");
+        response.put("status", health.getStatus().getCode());
+        response.put("configServer", (String) health.getDetails().get("configServer"));
         return ResponseEntity.ok(response);
     }
 }
