@@ -6,7 +6,7 @@ This repository implements a robust, centralized, Git-backed configuration syste
 
 ## 🎥 Project Demo
 
-[![Watch the Spring Cloud Config demo on YouTube](https://img.youtube.com/vi/Y8ZW6Wagosk/hqdefault.jpg)](https://youtu.be/Y8ZW6Wagosk)
+[![Watch the Spring Cloud Config demo on YouTube](https://img.youtube.com/vi/Y8ZW6Wagosk/maxresdefault.jpg)](https://youtu.be/Y8ZW6Wagosk)
 
 ---
 
